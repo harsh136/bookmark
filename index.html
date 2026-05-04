@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaLens - Minimalist URL Analyzer</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class', // Enables manual dark mode toggling
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        surface: '#ffffff',
+                        'surface-dark': '#111827',
+                        background: '#f9fafb',
+                        'background-dark': '#030712',
+                    },
+                    boxShadow: {
+                        'soft': '0 4px 40px -2px rgba(0, 0, 0, 0.05)',
+                        'float': '0 10px 40px -10px rgba(0,0,0,0.08)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Smooth fade-in animation for elements */
+        .fade-in {
+            animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* Custom scrollbar for raw data */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #e5e7eb;
+            border-radius: 4px;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #374151;
+        }
+        .bg-grid {
+            background-size: 40px 40px;
+            background-image: linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .dark .bg-grid {
+            background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
+    </style>
+    <script>
+        // Apply theme instantly on load to prevent flash
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+</head>
+<body class="bg-background dark:bg-background-dark text-gray-900 dark:text-gray-100 font-sans min-h-screen bg-grid flex flex-col items-center p-6 md:p-12 relative overflow-x-hidden selection:bg-black selection:text-white dark:selection:bg-white dark:selection:text-black transition-colors duration-300">
+
+    <!-- Theme Toggle -->
+    <button onclick="toggleTheme()" class="absolute top-6 right-6 p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full shadow-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors z-50">
+        <i data-lucide="moon" class="w-5 h-5 hidden dark:block"></i>
+        <i data-lucide="sun" class="w-5 h-5 block dark:hidden"></i>
+    </button>
+
+    <!-- Header / Hero -->
+    <div id="header-container" class="w-full max-w-3xl mt-20 mb-10 transition-all duration-700 ease-in-out text-center">
+        <div class="inline-flex items-center justify-center p-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700 transition-colors">
+            <i data-lucide="bookmark" class="w-6 h-6 text-black dark:text-white"></i>
+        </div>
+        <h1 class="text-4xl md:text-5xl font-semibold tracking-tight text-gray-900 dark:text-white mb-4 transition-colors">Visual Bookmarks</h1>
+        <p class="text-gray-500 dark:text-gray-400 text-lg md:text-xl font-light max-w-xl mx-auto transition-colors">
+            Save links as rich preview cards or search your collection.
+        </p>
+    </div>
+
+    <!-- Main Inputs Container (Now acting as a Smart Omnibox) -->
+    <div class="w-full max-w-2xl z-10 flex flex-col gap-3">
+        <form id="analyze-form" class="relative group">
+            <div class="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                <i data-lucide="search" id="input-icon" class="w-5 h-5 text-gray-400 group-focus-within:text-black dark:group-focus-within:text-white transition-colors"></i>
+            </div>
+            <input 
+                type="text" 
+                id="main-input" 
+                placeholder="Search bookmarks or paste a link..." 
+                autocomplete="off"
+                class="w-full pl-14 pr-36 py-5 bg-surface dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-3xl text-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-black/5 dark:focus:ring-white/10 focus:border-gray-400 dark:focus:border-gray-500 shadow-float transition-all placeholder:text-gray-400 dark:placeholder:text-gray-500"
+            >
+            <div class="absolute inset-y-2 right-2 flex items-center">
+                <button type="submit" id="save-btn" class="bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed px-6 py-3 rounded-full font-medium transition-all duration-300 flex items-center gap-2 h-full" disabled>
+                    <span>Save</span>
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </form>
+        
+        <!-- Error Message Container -->
+        <div id="error-message" class="hidden mt-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-2xl text-sm flex items-start gap-3 border border-red-100 dark:border-red-900/30 transition-colors">
+            <i data-lucide="alert-circle" class="w-5 h-5 shrink-0 mt-0.5"></i>
+            <span id="error-text">Failed to fetch metadata. Please check the URL and try again.</span>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loading-state" class="hidden w-full max-w-3xl mt-16 flex-col items-center justify-center opacity-0 transition-opacity duration-300">
+        <div class="relative w-16 h-16">
+            <div class="absolute inset-0 rounded-full border-4 border-gray-100"></div>
+            <div class="absolute inset-0 rounded-full border-4 border-black border-t-transparent animate-spin"></div>
+        </div>
+        <p class="mt-6 text-gray-500 font-medium animate-pulse">Extracting and saving...</p>
+    </div>
+
+    <!-- Folders Wrapper -->
+    <div id="folders-wrapper" class="w-full max-w-7xl mx-auto mt-6 px-4 hidden transition-opacity duration-500 fade-in">
+        <div class="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-3" id="folders-container">
+            <!-- Folder Pills injected here via JS -->
+        </div>
+    </div>
+
+    <!-- Bookmarks Grid -->
+    <div id="bookmarks-grid" class="w-full max-w-7xl mx-auto mt-4 pb-24 px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-0 transition-opacity duration-500">
+        <!-- Bookmark cards will be injected here via JavaScript -->
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 z-[100] hidden items-center justify-center opacity-0 transition-opacity duration-300">
+        <div class="absolute inset-0 bg-black/20 backdrop-blur-sm dark:bg-black/40" onclick="closeSettings()"></div>
+        <div class="relative bg-white dark:bg-gray-900 w-full max-w-sm p-6 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 transform scale-95 transition-transform duration-300" id="settings-modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Data Management</h2>
+                <button onclick="closeSettings()" class="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="space-y-3">
+                <button onclick="exportData()" class="w-full flex items-center justify-center gap-2 py-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-white rounded-2xl font-medium transition-colors border border-gray-200 dark:border-gray-700">
+                    <i data-lucide="download" class="w-4 h-4"></i> Export Backup (.json)
+                </button>
+                <label class="w-full flex items-center justify-center gap-2 py-3 bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 rounded-2xl font-medium transition-colors cursor-pointer shadow-sm">
+                    <i data-lucide="upload" class="w-4 h-4"></i> <span id="import-text">Import Backup (.json)</span>
+                    <input type="file" id="import-file" accept=".json" class="hidden" onchange="importData(event)">
+                </label>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 text-center mt-4">Importing safely merges with existing bookmarks.</p>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // DOM Elements
+        const form = document.getElementById('analyze-form');
+        const input = document.getElementById('main-input');
+        const inputIcon = document.getElementById('input-icon');
+        const saveBtn = document.getElementById('save-btn');
+        const headerContainer = document.getElementById('header-container');
+        const loadingState = document.getElementById('loading-state');
+        const bookmarksGrid = document.getElementById('bookmarks-grid');
+        const errorMessage = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+
+        // State Management
+        let bookmarks = JSON.parse(localStorage.getItem('metalens_bookmarks')) || [];
+        let folders = JSON.parse(localStorage.getItem('metalens_folders')) || [];
+        let currentFolderId = 'all';
+
+        // Folder Management Logic
+        window.renderFolders = function() {
+            const container = document.getElementById('folders-container');
+            if(!container) return;
+            container.innerHTML = '';
+
+            // 'Settings' Button
+            const settingsBtn = document.createElement('button');
+            settingsBtn.className = 'px-3 py-2 rounded-full text-sm font-medium border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-black dark:hover:text-white transition-colors shrink-0 flex items-center justify-center bg-white dark:bg-gray-800 shadow-sm mr-1';
+            settingsBtn.innerHTML = '<i data-lucide="settings" class="w-4 h-4 pointer-events-none"></i>';
+            settingsBtn.onclick = openSettings;
+            settingsBtn.title = "Data Settings";
+            container.appendChild(settingsBtn);
+
+            const totalCount = bookmarks.length;
+            const allBadge = `<span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${currentFolderId === 'all' ? 'bg-gray-800 text-gray-300 dark:bg-gray-200 dark:text-gray-600' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}">${totalCount}</span>`;
+
+            // 'All Bookmarks' Tab
+            const allBtn = document.createElement('button');
+            allBtn.className = `px-4 py-2 rounded-full text-sm font-medium transition-colors shrink-0 ${currentFolderId === 'all' ? 'bg-black dark:bg-white text-white dark:text-black shadow-sm' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`;
+            allBtn.innerHTML = `<div class="flex items-center gap-1.5"><i data-lucide="layers" class="w-4 h-4"></i>All Bookmarks ${allBadge}</div>`;
+            allBtn.onclick = () => selectFolder('all');
+            container.appendChild(allBtn);
+
+            // --- SMART VIRTUAL FOLDERS (Auto-generated by tags) ---
+            const getPlural = (label) => {
+                if (label === 'PDF Document') return 'PDFs';
+                if (label === 'Code Repo') return 'Code Repos';
+                if (label.endsWith('s')) return label;
+                return label + 's';
+            };
+
+            const virtualFoldersMap = {};
+            bookmarks.forEach(bm => {
+                // If it doesn't belong to a custom folder, auto-group it by its tag!
+                if (!bm.folderId) {
+                    const type = bm.typeLabel || 'Website';
+                    if (!virtualFoldersMap[type]) {
+                        virtualFoldersMap[type] = { count: 0, icon: bm.typeIcon || 'globe' };
+                    }
+                    virtualFoldersMap[type].count++;
+                }
+            });
+
+            Object.keys(virtualFoldersMap).sort().forEach(typeLabel => {
+                const vFolder = virtualFoldersMap[typeLabel];
+                const vId = 'virtual_' + typeLabel;
+                const folderBadge = `<span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${currentFolderId === vId ? 'bg-gray-800 text-gray-300 dark:bg-gray-200 dark:text-gray-600' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}">${vFolder.count}</span>`;
+
+                const wrapper = document.createElement('div');
+                wrapper.className = `group relative rounded-full text-sm font-medium transition-colors shrink-0 flex items-center ${currentFolderId === vId ? 'bg-black dark:bg-white text-white dark:text-black shadow-sm' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`;
+
+                const selectBtn = document.createElement('button');
+                selectBtn.className = 'px-4 py-2 flex items-center gap-1.5 h-full rounded-full cursor-pointer focus:outline-none text-left';
+                selectBtn.innerHTML = `<i data-lucide="${vFolder.icon}" class="w-3.5 h-3.5"></i><span>${getPlural(typeLabel)}</span>${folderBadge}`;
+                selectBtn.onclick = () => selectFolder(vId);
+                wrapper.appendChild(selectBtn);
+                
+                container.appendChild(wrapper);
+            });
+
+            // --- USER CUSTOM FOLDERS ---
+            folders.forEach(folder => {
+                const folderCount = bookmarks.filter(b => b.folderId === folder.id).length;
+                const folderBadge = `<span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${currentFolderId === folder.id ? 'bg-gray-800 text-gray-300 dark:bg-gray-200 dark:text-gray-600' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}">${folderCount}</span>`;
+
+                const wrapper = document.createElement('div');
+                wrapper.className = `group relative rounded-full text-sm font-medium transition-colors shrink-0 flex items-center ${currentFolderId === folder.id ? 'bg-black dark:bg-white text-white dark:text-black shadow-sm' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`;
+
+                const selectBtn = document.createElement('button');
+                selectBtn.className = 'px-4 py-2 pr-9 flex items-center gap-1 h-full rounded-full cursor-pointer focus:outline-none text-left';
+                selectBtn.innerHTML = `<span>${folder.name}</span>${folderBadge}`;
+                selectBtn.onclick = () => selectFolder(folder.id);
+                wrapper.appendChild(selectBtn);
+
+                const delBtn = document.createElement('button');
+                delBtn.className = `absolute right-1 p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-all z-20 ${currentFolderId === folder.id ? 'hover:bg-gray-800 dark:hover:bg-gray-200 text-gray-300 dark:text-gray-600 hover:text-white dark:hover:text-black' : 'hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`;
+                delBtn.title = "Delete folder";
+                delBtn.innerHTML = '<i data-lucide="x" class="w-3.5 h-3.5 pointer-events-none"></i>';
+                delBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Instantly delete (no confirm dialog, as the iframe blocks them)
+                    deleteFolderDirect(folder.id);
+                };
+                wrapper.appendChild(delBtn);
+
+                container.appendChild(wrapper);
+            });
+
+            // '+ New Folder' Button
+            const addBtn = document.createElement('button');
+            addBtn.id = 'add-folder-btn';
+            addBtn.className = 'px-4 py-2 rounded-full text-sm font-medium border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-black dark:hover:text-white transition-colors shrink-0 flex items-center gap-1.5 border-dashed bg-transparent';
+            addBtn.innerHTML = '<i data-lucide="plus" class="w-4 h-4 pointer-events-none"></i> Folder';
+            addBtn.onclick = createFolder;
+            container.appendChild(addBtn);
+            
+            lucide.createIcons();
+        };
+
+        window.selectFolder = function(id) {
+            currentFolderId = id;
+            renderFolders();
+            input.dispatchEvent(new Event('input')); // Re-trigger search logic to update grid
+        };
+
+        window.createFolder = function() {
+            const addBtn = document.getElementById('add-folder-btn');
+            if(addBtn) addBtn.style.display = 'none';
+
+            const inputWrapper = document.createElement('div');
+            inputWrapper.className = 'flex items-center fade-in shrink-0';
+            inputWrapper.innerHTML = `
+                <input type="text" id="inline-folder-input" placeholder="Name..." class="px-3 py-2 w-32 rounded-l-full text-sm font-medium border border-gray-200 dark:border-gray-700 focus:outline-none focus:border-black dark:focus:border-white bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm" autocomplete="off">
+                <button id="inline-folder-save" class="px-3 py-2 bg-black dark:bg-white text-white dark:text-black rounded-r-full text-sm border border-black dark:border-white shadow-sm hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"><i data-lucide="check" class="w-4 h-4 pointer-events-none"></i></button>
+            `;
+            document.getElementById('folders-container').appendChild(inputWrapper);
+            lucide.createIcons();
+            
+            const folderInput = document.getElementById('inline-folder-input');
+            folderInput.focus();
+
+            const save = () => {
+                const name = folderInput.value.trim();
+                if (name) {
+                    const newFolder = { id: 'folder_' + Date.now(), name: name };
+                    folders.push(newFolder);
+                    localStorage.setItem('metalens_folders', JSON.stringify(folders));
+                    selectFolder(newFolder.id);
+                } else {
+                    renderFolders();
+                }
+            };
+
+            document.getElementById('inline-folder-save').onclick = save;
+            folderInput.onkeypress = (e) => { if(e.key === 'Enter') save(); };
+            folderInput.onblur = () => { setTimeout(() => { if (document.body.contains(inputWrapper)) renderFolders(); }, 150); };
+        };
+
+        window.deleteFolderDirect = function(id) {
+            folders = folders.filter(f => f.id !== id);
+            localStorage.setItem('metalens_folders', JSON.stringify(folders));
+            
+            // Migrate bookmarks back to 'All'
+            bookmarks = bookmarks.map(b => b.folderId === id ? { ...b, folderId: null } : b);
+            localStorage.setItem('metalens_bookmarks', JSON.stringify(bookmarks));
+            
+            if(currentFolderId === id) selectFolder('all');
+            else {
+                renderFolders();
+                input.dispatchEvent(new Event('input'));
+            }
+        };
+
+        // Data Management (Import / Export)
+        window.openSettings = function() {
+            const modal = document.getElementById('settings-modal');
+            const content = document.getElementById('settings-modal-content');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                content.classList.remove('scale-95');
+                content.classList.add('scale-100');
+            }, 10);
+        };
+
+        window.closeSettings = function() {
+            const modal = document.getElementById('settings-modal');
+            const content = document.getElementById('settings-modal-content');
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                document.getElementById('import-text').textContent = 'Import Backup (.json)';
+            }, 300);
+        };
+
+        window.exportData = function() {
+            const data = { bookmarks, folders };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `metalens_backup_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            closeSettings();
+        };
+
+        window.importData = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const importText = document.getElementById('import-text');
+            importText.textContent = 'Importing...';
+            
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    let merged = false;
+                    
+                    if (data.bookmarks && Array.isArray(data.bookmarks)) {
+                        const existingIds = new Set(bookmarks.map(b => b.id));
+                        data.bookmarks.forEach(b => {
+                            if (!existingIds.has(b.id)) {
+                                bookmarks.push(b);
+                                merged = true;
+                            }
+                        });
+                    }
+                    if (data.folders && Array.isArray(data.folders)) {
+                        const existingIds = new Set(folders.map(f => f.id));
+                        data.folders.forEach(f => {
+                            if (!existingIds.has(f.id)) {
+                                folders.push(f);
+                                merged = true;
+                            }
+                        });
+                    }
+                    
+                    if (merged) {
+                        localStorage.setItem('metalens_bookmarks', JSON.stringify(bookmarks));
+                        localStorage.setItem('metalens_folders', JSON.stringify(folders));
+                        renderFolders();
+                        input.dispatchEvent(new Event('input')); // Refresh grid
+                    }
+                    
+                    importText.textContent = 'Success!';
+                    setTimeout(() => closeSettings(), 1000);
+                } catch (err) {
+                    console.error("Failed to parse JSON", err);
+                    importText.textContent = 'Error parsing file';
+                    setTimeout(() => { importText.textContent = 'Import Backup (.json)'; }, 2000);
+                }
+                e.target.value = ''; // Reset input so same file can be chosen again
+            };
+            reader.readAsText(file);
+        };
+
+        // File Type Detection Logic
+        function getUrlType(urlStr) {
+            try {
+                const url = new URL(urlStr);
+                const hostname = url.hostname.toLowerCase();
+                const pathname = url.pathname.toLowerCase();
+
+                if (hostname.includes('youtube.com') || hostname.includes('youtu.be') || hostname.includes('vimeo.com') || hostname.includes('twitch.tv')) {
+                    return { label: 'Video', icon: 'video', color: 'bg-red-500 text-white border-red-600 dark:border-red-500' };
+                }
+                if (hostname.includes('github.com') || hostname.includes('gitlab.com') || hostname.includes('bitbucket.org')) {
+                    return { label: 'Code Repo', icon: 'code-2', color: 'bg-gray-800 dark:bg-gray-700 text-white border-gray-900 dark:border-gray-600' };
+                }
+                if (pathname.endsWith('.pdf') || urlStr.toLowerCase().includes('.pdf')) {
+                    return { label: 'PDF Document', icon: 'file-text', color: 'bg-orange-500 text-white border-orange-600 dark:border-orange-500' };
+                }
+                if (hostname.includes('medium.com') || hostname.includes('dev.to') || hostname.includes('substack.com') || pathname.includes('/blog/') || pathname.includes('/article/')) {
+                    return { label: 'Article', icon: 'book-open', color: 'bg-blue-500 text-white border-blue-600 dark:border-blue-500' };
+                }
+                
+                return { label: 'Website', icon: 'layout', color: 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700' };
+            } catch (e) {
+                return { label: 'Link', icon: 'link', color: 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700' };
+            }
+        }
+
+        // Render Bookmarks
+        function renderBookmarks(dataToRender = bookmarks) {
+            bookmarksGrid.innerHTML = '';
+            const foldersWrapper = document.getElementById('folders-wrapper');
+
+            // Always show folders wrapper, even if no bookmarks exist yet
+            if(foldersWrapper) foldersWrapper.classList.remove('hidden');
+
+            if (bookmarks.length === 0) {
+                // Restore expanded header
+                headerContainer.classList.add('mt-20', 'mb-10');
+                headerContainer.classList.remove('mt-8', 'mb-6');
+                headerContainer.querySelector('h1').classList.add('text-4xl', 'md:text-5xl');
+                headerContainer.querySelector('h1').classList.remove('text-2xl');
+                headerContainer.querySelector('p').classList.remove('hidden');
+                bookmarksGrid.classList.add('opacity-0');
+                return;
+            }
+
+            // Compact header
+            headerContainer.classList.remove('mt-20', 'mb-10');
+            headerContainer.classList.add('mt-8', 'mb-6');
+            headerContainer.querySelector('h1').classList.remove('text-4xl', 'md:text-5xl');
+            headerContainer.querySelector('h1').classList.add('text-2xl');
+            headerContainer.querySelector('p').classList.add('hidden');
+
+            if (dataToRender.length === 0) {
+                bookmarksGrid.innerHTML = `
+                    <div class="col-span-full flex flex-col items-center justify-center py-16 text-gray-400">
+                        <i data-lucide="search-x" class="w-12 h-12 mb-4 opacity-50"></i>
+                        <p>No bookmarks found here.</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                bookmarksGrid.classList.remove('opacity-0');
+                return;
+            }
+
+            dataToRender.forEach(bm => {
+                const card = document.createElement('div');
+                card.className = "bg-surface dark:bg-surface-dark rounded-3xl shadow-soft overflow-hidden border border-gray-100 dark:border-gray-800 flex flex-col relative group transition-all hover:-translate-y-1 hover:shadow-float fade-in";
+                
+                // Get Type Info (calculate if missing for backward compatibility)
+                const typeInfo = bm.typeLabel ? { label: bm.typeLabel, icon: bm.typeIcon, color: bm.typeColor } : getUrlType(bm.url);
+
+                // Set relevant fallback icon based on type
+                let fallbackIcon = 'globe';
+                if (typeInfo.icon === 'video') fallbackIcon = 'play-circle';
+                if (typeInfo.icon === 'code-2') fallbackIcon = 'file-code-2';
+                if (typeInfo.icon === 'file-text') fallbackIcon = 'file-text';
+                if (typeInfo.icon === 'book-open') fallbackIcon = 'book-open';
+
+                // Added a fallback banner when bm.image is missing
+                const bannerHtml = bm.image 
+                    ? `<div class="relative w-full h-40 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-800">
+                           <img src="${bm.image}" class="w-full h-full object-cover">
+                       </div>` 
+                    : `<div class="relative w-full h-32 bg-gradient-to-tr from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-900 border-b border-gray-100 dark:border-gray-800 flex items-center justify-center">
+                           <i data-lucide="${fallbackIcon}" class="w-10 h-10 text-gray-300 dark:text-gray-600"></i>
+                       </div>`;
+
+                // Simplified logo positioning since there is always a banner now
+                const logoHtml = bm.logo
+                    ? `<div class="absolute -top-6 left-6 w-14 h-14 bg-white dark:bg-gray-900 rounded-xl shadow-md border border-gray-100 dark:border-gray-700 p-1.5 overflow-hidden flex items-center justify-center z-10">
+                           <img src="${bm.logo}" class="w-full h-full object-contain rounded-lg">
+                       </div>`
+                    : '';
+                
+                const spacerHtml = bm.logo ? `<div class="h-8"></div>` : '';
+                
+                // Type Badge HTML
+                const typeBadgeHtml = `
+                    <div class="absolute top-4 left-4 z-20 ${typeInfo.color} border text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                        <i data-lucide="${typeInfo.icon}" class="w-3.5 h-3.5"></i>
+                        ${typeInfo.label}
+                    </div>
+                `;
+
+                // Folder Badge logic (only show when viewing 'All Bookmarks')
+                const folderInfo = bm.folderId ? folders.find(f => f.id === bm.folderId) : null;
+                const folderBadgeHtml = folderInfo && currentFolderId === 'all' 
+                    ? `<div class="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2.5 py-1.5 rounded-full shrink-0 max-w-[45%]">
+                           <i data-lucide="folder" class="w-3.5 h-3.5 shrink-0"></i>
+                           <span class="truncate">${folderInfo.name}</span>
+                       </div>` 
+                    : '';
+
+                card.innerHTML = `
+                    ${typeBadgeHtml}
+                    <button onclick="deleteBookmark(${bm.id})" class="absolute top-4 right-4 z-20 bg-white/80 dark:bg-gray-900/80 backdrop-blur text-red-500 p-2 rounded-full opacity-0 group-hover:opacity-100 transition-all hover:bg-red-100 dark:hover:bg-red-900/40 shadow-sm border border-red-100 dark:border-red-900/50 focus:opacity-100" title="Delete Bookmark">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                    ${bannerHtml}
+                    <div class="p-6 relative flex-grow flex flex-col">
+                        ${logoHtml}
+                        ${spacerHtml}
+                        <p class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 tracking-wide uppercase mb-2 ${!bm.publisher ? 'hidden' : ''}">${bm.publisher || ''}</p>
+                        <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 leading-tight mb-3 line-clamp-2">${bm.title || 'No Title'}</h3>
+                        <p class="text-gray-500 dark:text-gray-400 text-sm leading-relaxed line-clamp-3 mb-6 flex-grow">${bm.description || 'No description available.'}</p>
+                        
+                        <div class="mt-auto pt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-50 dark:border-gray-800/50">
+                            <a href="${bm.url}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white bg-gray-50 dark:bg-gray-800/50 px-3 py-1.5 rounded-full transition-colors border border-gray-200 dark:border-gray-700 shrink-0 flex-1 min-w-0">
+                                <i data-lucide="external-link" class="w-3.5 h-3.5 shrink-0"></i>
+                                <span class="truncate">${bm.urlText}</span>
+                            </a>
+                            ${folderBadgeHtml}
+                        </div>
+                    </div>
+                `;
+                bookmarksGrid.appendChild(card);
+            });
+            
+            bookmarksGrid.classList.remove('opacity-0');
+            lucide.createIcons(); // Initialize icons for newly injected cards
+        }
+
+        // Helper: Strict URL Validator
+        function isValidUrl(string) {
+            try {
+                new URL(string);
+                return true;
+            } catch (_) {
+                // Regex fallback for loose domains like "youtube.com"
+                const pattern = new RegExp('^(https?:\\/\\/)?'+ 
+                    '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|'+ 
+                    '((\\d{1,3}\\.){3}\\d{1,3}))'+ 
+                    '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*'+ 
+                    '(\\?[;&a-z\\d%_.~+=-]*)?'+ 
+                    '(\\#[-a-z\\d_]*)?$','i'); 
+                return !!pattern.test(string);
+            }
+        }
+
+        // Omnibox Logic: Real-time intent detection (Search vs Save)
+        input.addEventListener('input', (e) => {
+            const query = e.target.value.trim();
+            errorMessage.classList.add('hidden');
+
+            // 1. Pre-filter by active folder ALWAYS (Handles both Custom and Smart folders)
+            const folderFilteredBookmarks = bookmarks.filter(bm => {
+                if (currentFolderId === 'all') return true;
+                if (currentFolderId.startsWith('virtual_')) {
+                    const typeLabel = currentFolderId.replace('virtual_', '');
+                    return !bm.folderId && (bm.typeLabel || 'Website') === typeLabel;
+                }
+                return bm.folderId === currentFolderId;
+            });
+
+            if (!query) {
+                // Empty State
+                inputIcon.setAttribute('data-lucide', 'search');
+                saveBtn.disabled = true;
+                saveBtn.className = 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed px-6 py-3 rounded-full font-medium transition-all duration-300 flex items-center gap-2 h-full';
+                lucide.createIcons();
+                renderBookmarks(folderFilteredBookmarks);
+                return;
+            }
+
+            if (isValidUrl(query)) {
+                // Intent: URL Saving
+                inputIcon.setAttribute('data-lucide', 'link');
+                saveBtn.disabled = false;
+                saveBtn.className = 'bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 px-6 py-3 rounded-full font-medium transition-all duration-300 flex items-center gap-2 h-full';
+                lucide.createIcons();
+                renderBookmarks(folderFilteredBookmarks); // Keep showing active folder list
+            } else {
+                // Intent: Searching
+                inputIcon.setAttribute('data-lucide', 'search');
+                saveBtn.disabled = true;
+                saveBtn.className = 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed px-6 py-3 rounded-full font-medium transition-all duration-300 flex items-center gap-2 h-full';
+                lucide.createIcons();
+                
+                // 2. Perform real-time filter on the already folder-filtered list
+                const lowerQuery = query.toLowerCase();
+                const searchFiltered = folderFilteredBookmarks.filter(bm => {
+                    const titleMatch = bm.title && bm.title.toLowerCase().includes(lowerQuery);
+                    const descMatch = bm.description && bm.description.toLowerCase().includes(lowerQuery);
+                    const urlMatch = bm.urlText && bm.urlText.toLowerCase().includes(lowerQuery);
+                    const pubMatch = bm.publisher && bm.publisher.toLowerCase().includes(lowerQuery);
+                    return titleMatch || descMatch || urlMatch || pubMatch;
+                });
+                renderBookmarks(searchFiltered);
+            }
+        });
+
+        // Delete Bookmark function
+        window.deleteBookmark = function(id) {
+            bookmarks = bookmarks.filter(b => b.id !== id);
+            localStorage.setItem('metalens_bookmarks', JSON.stringify(bookmarks));
+            // Retrigger input to keep search context accurate
+            input.dispatchEvent(new Event('input'));
+            renderFolders(); // Update counts
+        }
+
+        // Form Submit Handler
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            let url = input.value.trim();
+            
+            // Extra safety guard (since button is disabled for non-URLs anyway)
+            if (!url || !isValidUrl(url)) return;
+            
+            // Format URL if missing protocol to prevent API fetch errors
+            if (!/^https?:\/\//i.test(url)) {
+                url = 'https://' + url;
+            }
+
+            // Reset UI States
+            errorMessage.classList.add('hidden');
+            
+            // Duplicate Detection
+            const normalizedInput = url.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
+            const isDuplicate = bookmarks.some(bm => {
+                const normalizedBmUrl = bm.url.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
+                return normalizedBmUrl === normalizedInput;
+            });
+
+            if (isDuplicate) {
+                errorText.textContent = "This link has already been saved to your bookmarks.";
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+
+            // Show Loading
+            loadingState.classList.remove('hidden');
+            setTimeout(() => loadingState.classList.remove('opacity-0'), 10);
+
+            let extractedData = {};
+            const typeInfo = getUrlType(url);
+
+            try {
+                const encodedUrl = encodeURIComponent(url);
+
+                // 1. YouTube specific handler to prevent blocking and fetch video details reliably
+                const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+                
+                if (ytMatch && ytMatch[1]) {
+                    const videoId = ytMatch[1];
+                    try {
+                        // Use Noembed API for CORS-friendly YouTube metadata extraction
+                        const res = await fetch(`https://noembed.com/embed?dataType=json&url=${encodedUrl}`);
+                        const noembedData = await res.json();
+                        
+                        extractedData = {
+                            title: noembedData.title || 'YouTube Video',
+                            description: noembedData.author_name ? `Channel: ${noembedData.author_name}` : 'Watch on YouTube',
+                            image: { url: noembedData.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` },
+                            logo: { url: 'https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg' },
+                            publisher: 'YouTube',
+                            url: url
+                        };
+                    } catch (e) {
+                        // Iron-clad fallback if even Noembed fails
+                        extractedData = {
+                            title: 'YouTube Video',
+                            description: 'Watch on YouTube',
+                            image: { url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` },
+                            logo: { url: 'https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg' },
+                            publisher: 'YouTube',
+                            url: url
+                        };
+                    }
+                } else {
+                    // 2. Default Microlink API for all other websites
+                    const response = await fetch(`https://api.microlink.io/?url=${encodedUrl}`);
+                    
+                    if (!response.ok) {
+                        throw new Error('Website blocked requests.');
+                    }
+
+                    const jsonResponse = await response.json();
+                    
+                    if (jsonResponse.status !== 'success') {
+                        throw new Error('Unable to extract data.');
+                    }
+
+                    extractedData = jsonResponse.data;
+                }
+            } catch (err) {
+                // Graceful Downgrade: If scraper is blocked, don't crash! Save minimal data instead.
+                console.warn("Metadata extraction blocked/failed, using fallback data:", err);
+                let fallbackDomain = url;
+                try { fallbackDomain = new URL(url).hostname.replace('www.', ''); } catch(e) {}
+                
+                extractedData = {
+                    title: typeInfo.label === 'PDF Document' ? fallbackDomain + ' (PDF File)' : fallbackDomain,
+                    description: 'Metadata blocked by the website. Link successfully saved.',
+                    url: url,
+                    publisher: fallbackDomain
+                };
+            } finally {
+                // Create Bookmark Object
+                const newBookmark = {
+                    id: Date.now(),
+                    url: extractedData.url || url,
+                    urlText: (extractedData.url || url).replace(/^https?:\/\//, '').replace(/\/$/, ''),
+                    title: extractedData.title,
+                    description: extractedData.description,
+                    image: extractedData.image?.url,
+                    logo: extractedData.logo?.url,
+                    publisher: extractedData.publisher,
+                    typeLabel: typeInfo.label,
+                    typeIcon: typeInfo.icon,
+                    typeColor: typeInfo.color,
+                    // Auto-assigns to custom folder if selected, otherwise leaves null so Smart Folders can pick it up
+                    folderId: (currentFolderId === 'all' || currentFolderId.startsWith('virtual_')) ? null : currentFolderId 
+                };
+
+                // Add to array and local storage
+                bookmarks.unshift(newBookmark); // Add to the top
+                localStorage.setItem('metalens_bookmarks', JSON.stringify(bookmarks));
+                
+                // Clear input, trigger reset, and re-render
+                input.value = '';
+                input.dispatchEvent(new Event('input')); 
+                renderFolders(); // Update counts
+                
+                loadingState.classList.add('opacity-0');
+                setTimeout(() => loadingState.classList.add('hidden'), 300);
+            }
+        });
+
+        // Initial Render
+        renderFolders();
+        renderBookmarks();
+
+        // Theme Toggle Function
+        window.toggleTheme = function() {
+            document.documentElement.classList.toggle('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        };
+    </script>
+</body>
+</html>
